@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gravité des rapports | Conseil disciplinaire</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='comparison.css') }}">
+    <script src="{{ url_for('static', filename='comparison.js') }}" defer></script>
+</head>
+<body>
+    <main>
+        <header>
+            <p class="context">Conseil disciplinaire</p>
+            <h1>Comparer la gravité proposée</h1>
+        </header>
+
+        <form id="report-form" data-bert-url="{{ url_for('analyze_report') }}"
+              data-ml-url="{{ url_for('analyze_report_ml') }}" novalidate>
+            <label for="report-text">Rapport disciplinaire</label>
+            <textarea id="report-text" name="report_text" rows="6" required
+                      aria-describedby="form-error" placeholder="Décrivez les faits observés."></textarea>
+            <div class="actions">
+                <button type="submit">Analyser</button>
+                <span id="form-status" role="status"></span>
+            </div>
+            <p id="form-error" role="alert" hidden></p>
+        </form>
+
+        <section class="results" aria-label="Propositions des deux méthodes" aria-live="polite">
+            <article>
+                <h2>BERT + mots-clés</h2>
+                <p id="bert-level" class="level">En attente</p>
+                <p id="bert-reason" class="reason" hidden></p>
+            </article>
+            <article>
+                <h2>TF-IDF + régression logistique</h2>
+                <p id="ml-level" class="level">En attente</p>
+                <p id="probability-heading" class="reason" hidden>Probabilités estimées</p>
+                <dl id="ml-probabilities" hidden></dl>
+            </article>
+        </section>
+    </main>
+</body>
+</html>

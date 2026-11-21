@@ -1,0 +1,77 @@
+:root {
+    color-scheme: light;
+    font-family: system-ui, sans-serif;
+    color: #142f2b;
+    background: #f5f7f3;
+    line-height: 1.5;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; }
+
+main {
+    width: min(100% - 2rem, 57rem);
+    margin: 0 auto;
+    padding: clamp(2rem, 7vw, 5rem) 0;
+}
+
+header { margin-bottom: 2rem; }
+.context { margin: 0 0 .35rem; color: #45615a; font-weight: 600; }
+h1 { margin: 0; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.15; }
+
+form, article {
+    padding: clamp(1rem, 4vw, 1.65rem);
+    border: 1px solid #cbd8cd;
+    border-radius: .9rem;
+    background: #fff;
+}
+
+label { display: block; margin-bottom: .5rem; font-weight: 650; }
+
+textarea {
+    width: 100%;
+    min-height: 8rem;
+    resize: vertical;
+    padding: .8rem;
+    border: 1px solid #82968c;
+    border-radius: .45rem;
+    font: inherit;
+    color: inherit;
+}
+
+textarea:focus-visible, button:focus-visible {
+    outline: 3px solid #167e67;
+    outline-offset: 3px;
+}
+
+.actions { display: flex; align-items: center; gap: 1rem; margin-top: .75rem; }
+
+button {
+    border: 0;
+    border-radius: .45rem;
+    padding: .65rem 1.3rem;
+    color: #fff;
+    background: #19594b;
+    font: inherit;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+button:hover { background: #104539; }
+button:disabled { opacity: .65; cursor: wait; }
+#form-status, .reason { color: #45615a; }
+#form-error { margin-bottom: 0; color: #962c25; white-space: pre-line; }
+
+.results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
+h2 { margin: 0; font-size: 1rem; }
+.level { margin: .55rem 0 0; font-size: 1.65rem; font-weight: 700; }
+.reason { margin: .5rem 0 0; }
+dl { margin: .4rem 0 0; }
+dl div { display: flex; justify-content: space-between; gap: .5rem; padding: .25rem 0; }
+dl div + div { border-top: 1px solid #e1e8e1; }
+dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 38rem) {
+    .results { grid-template-columns: 1fr; }
+}

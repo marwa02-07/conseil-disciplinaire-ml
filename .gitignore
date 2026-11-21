@@ -13,4 +13,4 @@ models--nlptown--bert-base-multilingual-uncased-sentiment/
 pytorch_model.bin
 detected_faces/
 face_*.jpg
-.discipline-remote-check/
+/artifacts/
