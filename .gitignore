@@ -1,0 +1,16 @@
+.venv*/
+venv310/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+.cache/
+huggingface/
+transformers_cache/
+bert_cache/
+models--nlptown--bert-base-multilingual-uncased-sentiment/
+*.safetensors
+pytorch_model.bin
+detected_faces/
+face_*.jpg
+.discipline-remote-check/

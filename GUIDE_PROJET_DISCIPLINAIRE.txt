@@ -1,0 +1,346 @@
+GUIDE DU PROJET DE CONSEIL DISCIPLINAIRE
+
+1. OBJECTIF ET FICHIERS FOURNIS
+
+Le prototype aide à trier des rapports d’incident en trois niveaux de gravité.
+Il reçoit un texte en français et propose un niveau à partir de mots-clés et
+d’un modèle de sentiment. Le niveau peut servir d’aide à l’examen d’un dossier.
+Le code fourni s’arrête à l’analyse et ne prend aucune décision disciplinaire.
+
+Rôles à comprendre, d’après le scénario de reprise
+
+- Enseignant : rédiger et transmettre un rapport d’incident. La transmission
+  du texte et son analyse sont visibles dans l’API. Le formulaire, le compte
+  enseignant et le suivi de ses rapports restent impossibles à vérifier.
+- Étudiant : consulter le dossier qui le concerne et suivre son éventuelle
+  décision. Ces usages sont possibles dans le scénario, mais restent
+  impossibles à vérifier à partir des fichiers fournis.
+- Administrateur : consulter les rapports, organiser leur traitement et
+  consigner les décisions du conseil. Ces usages restent impossibles à
+  vérifier. L’API fournie ne gère ni comptes, ni rôles, ni dossiers.
+
+Presentation.pdf n’a pas été trouvé dans le dossier de travail, à côté de
+celui-ci ni dans pythonProject.zip. Aucune fonctionnalité ne peut donc être
+attribuée à la présentation. Le dossier de travail ne contient pas de dépôt
+Git exploitable. Ses neuf fichiers utiles sont identiques, octet pour octet,
+aux neuf fichiers correspondants de l’archive.
+
+pythonProject/
+  app.py                                      API Flask
+  check_gpu.py                                diagnostic PyTorch/CUDA
+  test_cases.py                               trois rapports fictifs
+  nlp/
+    nlp_service.py                            sentiment et règles de gravité
+  video_ai/
+    video_test.py                             démo webcam
+    face_detector.py                          détection de visages
+    face_storage.py                           export d’images de visages
+    violence_detector.py                      mesure du mouvement
+    models/
+      haarcascade_frontalface_default.xml     modèle OpenCV fourni
+
+État des composants
+
+- API et classification de rapports : code visible dans app.py et
+  nlp/nlp_service.py. Le modèle de sentiment est référencé par son identifiant.
+  Ses poids et son tokenizer sont à télécharger au premier démarrage.
+- Interface : React est mentionné dans un commentaire de app.py à propos de
+  CORS. Aucune source React, page HTML ou configuration frontend n’est
+  fournie. L’interface et son parcours sont impossibles à vérifier.
+- Base de données : aucun schéma, fichier de base, migration ou accès à une
+  base dans le code fourni. Le stockage et l’historique des rapports restent
+  impossibles à vérifier. L’API traite chaque requête en mémoire.
+- Vidéo : quatre scripts et le modèle de détection de visages sont fournis.
+  La fenêtre OpenCV et l’export de visages sont visibles dans le code.
+
+2. SUIVRE UN RAPPORT FICTIF DE BOUT EN BOUT
+
+1) Saisir « La situation a perturbe la seance. » dans la commande PowerShell
+   de la section 4. Cette commande joue le rôle du formulaire absent.
+2) Envoyer un POST à http://127.0.0.1:5000/api/analyze-report avec l’en-tête
+   Content-Type: application/json et ce corps JSON :
+
+   {"report_text":"La situation a perturbe la seance."}
+
+3) Dans app.py, Flask appelle analyze_report(). Cette fonction lit le corps
+   avec request.get_json() et récupère la clé report_text. Si l’objet JSON
+   ne contient pas cette clé, par exemple avec {}, elle renvoie HTTP 400
+   et {"error":"report_text is required"}. Le code attend une chaîne et ne
+   valide pas explicitement son type.
+4) analyze_report() appelle classify_report_fr(report_text), définie dans
+   nlp/nlp_service.py. Le résultat Python contient level, stars, confidence
+   et reason. app.py remet le texte dans report_text, expose level sous le nom
+   disciplinary_level et prépare l’objet details pour les informations NLP.
+5) Avec le code original, app.py tente de lire result["severe_keyword"], une
+   clé absente. Une fois la classification terminée, cette lecture lève
+   KeyError: 'severe_keyword' avant l’envoi du JSON. Avec le modèle BERT
+   chargé, Invoke-RestMethod a reçu HTTP 500 et une page HTML « Internal
+   Server Error ». En mode debug, Flask peut afficher la page de débogage.
+
+Correction minimale à essayer dans une copie de travail
+
+Dans le bloc details de analyze_report(), remplacer cette ligne :
+
+        "severe_keyword": result["severe_keyword"]
+
+par :
+
+        "reason": result["reason"]
+
+Ce changement expose la raison déjà produite par le classificateur.
+Après correction, la réponse attendue est HTTP 200. Le client de test Flask
+a obtenu le JSON suivant avec le vrai BERT sur CPU et la correction chargée
+en mémoire.
+
+   {
+     "report_text": "La situation a perturbe la seance.",
+     "disciplinary_level": 3,
+     "details": {
+       "stars": 2,
+       "confidence": 0.435,
+       "reason": "Sentiment très négatif"
+     }
+   }
+
+PowerShell affiche ces champs dans le terminal. Si l’interface est récupérée
+plus tard, elle pourra les lire pour afficher le niveau et sa raison.
+
+3. MACHINE LEARNING ET VIDÉO
+
+Chargement et sortie du modèle
+
+À l’import de nlp/nlp_service.py, Transformers crée pipeline("sentiment-analysis",
+model="nlptown/bert-base-multilingual-uncased-sentiment", device=device).
+Le code choisit le premier GPU CUDA (device=0) si torch.cuda.is_available()
+renvoie True. Sinon, il utilise le processeur (device=-1).
+
+Ce BERT multilingue a été ajusté sur des avis de produits dans six langues,
+dont le français. Il prédit une note de sentiment de 1 à 5 étoiles, de très
+négatif à très positif. classify_report_fr() lit le premier caractère de
+l’étiquette (par exemple "3 stars") et arrondit le score à trois décimales.
+Ce score est la probabilité attribuée par le modèle à la classe d’étoiles
+retenue après softmax. La classification disciplinaire utilise ses propres
+règles et n’a pas de score de confiance calculé dans le code.
+
+Sources : https://huggingface.co/nlptown/bert-base-multilingual-uncased-sentiment
+          https://huggingface.co/docs/transformers/main_classes/pipelines
+
+Ordre exact dans classify_report_fr()
+
+1) Exécuter BERT et récupérer les étoiles et le score. Même un rapport
+   contenant un mot-clé exige que l’appel au modèle aboutisse.
+2) Mettre le texte en minuscules et compter les entrées trouvées dans
+   SEVERE_KEYWORDS, MODERATE_KEYWORDS et MINOR_KEYWORDS. Le test word in
+   text_lower repère des sous-chaînes, sans frontières de mots ni analyse
+   de la négation. Chaque entrée correspondante compte une fois, même si
+   elle apparaît plusieurs fois. Des entrées qui se recouvrent peuvent compter
+   chacune.
+3) Si au moins une entrée grave correspond, renvoyer le niveau 3 (« Mots-clés
+   graves détectés »). Sinon, si une entrée modérée correspond, renvoyer le
+   niveau 2 (« Mots-clés modérés détectés »). Sinon, si une entrée mineure
+   correspond, renvoyer le niveau 1 (« Incident mineur détecté »).
+4) Sans mot-clé dans les trois listes, les étoiles déterminent le niveau :
+   1 ou 2 étoiles → 3 (« Sentiment très négatif »), 3 étoiles → 2 (« Sentiment
+   neutre »), 4 ou 5 étoiles → 1 (« Sentiment moins négatif »). Le score
+   confidence ne sert jamais de seuil.
+
+Trois exemples fictifs
+
+- « L’étudiant n’a pas frappé son camarade. » → niveau 3 dès que le modèle
+  répond, car « frappé » figure dans SEVERE_KEYWORDS et la négation est ignorée.
+- « Un élève a triché et est arrivé en retard. » → niveau 2 dès que le modèle
+  répond. « triché » est modéré et prioritaire sur « retard », mineur.
+- « La situation a perturbe la seance. » → aucun mot-clé. Avec 1 ou 2 étoiles,
+  la sortie serait 3. Avec 3 étoiles, elle serait 2. Avec 4 ou 5 étoiles,
+  elle serait 1. Lors de l’essai sur CPU, BERT a donné 2 étoiles et un
+  score de 0,435, d’où un niveau 3.
+
+Les journaux [AI DEBUG] montrent les 60 premiers caractères du rapport,
+les étoiles, le score, les compteurs et le niveau. Utiliser des textes fictifs
+pour les démonstrations.
+
+Vidéo et GPU
+
+- video_ai/video_test.py ouvre la webcam d’indice 0 via cv2.VideoCapture(0).
+  Le script lit des images en direct, affiche la fenêtre « Face & Violence
+  Detection » et se ferme avec Échap ou lorsque la lecture d’image échoue.
+  Il ne prend pas de fichier vidéo en argument et s’exécute séparément de l’API.
+- video_ai/face_detector.py, FaceDetector.detect_faces(frame), passe l’image
+  en niveaux de gris et applique le fichier XML Haar. Il renvoie les rectangles
+  des visages frontaux détectés. Il n’identifie pas les personnes.
+- video_ai/face_storage.py, FaceStorage.save_faces(frame, faces), découpe les
+  zones détectées en JPEG dans video_ai/detected_faces/ et renvoie la liste des
+  chemins générés. video_test.py imprime cette liste et impose plus de trois
+  secondes entre deux lots. Un même visage peut donc être enregistré plusieurs
+  fois. Utiliser un sujet de démonstration fictif ou une personne consentante
+  et autorisée, car le script écrit automatiquement ces images sur disque.
+- video_ai/violence_detector.py, ViolenceDetector.detect_violence(frame),
+  floute l’image en niveaux de gris et la compare à la précédente. Il compte
+  les pixels dont l’écart dépasse 25 et calcule une moyenne sur les cinq
+  dernières comparaisons au maximum. Il renvoie un booléen et le ratio moyen.
+  Au-delà de 5 %, video_test.py affiche « VIOLENCE DETECTED! ». La première
+  image initialise le détecteur et renvoie False, 0. L’alerte mesure du
+  mouvement, si bien qu’un déplacement de caméra ou un changement de lumière
+  peut la déclencher. Elle ne confirme pas un incident.
+- check_gpu.py interroge torch.cuda.is_available() et imprime « CUDA available:
+  True » ou « CUDA available: False ». Si CUDA est disponible, il imprime aussi
+  le nom du premier GPU. Ce script ne charge ni BERT ni la webcam et ne mesure
+  pas les performances.
+
+Améliorations proposées pour le groupe
+
+Annoter des rapports autorisés ou fictifs avec les niveaux 1, 2 et 3. Entraîner
+un modèle TF-IDF + régression logistique sur une partie des rapports. Tester
+les deux systèmes sur les mêmes rapports réservés au test et comparer, par
+exemple, le F1 macro et les erreurs par niveau. Envisager ensuite une
+classification distincte du type d’incident, comme le retard ou la triche.
+
+4. LANCER ET TESTER SOUS WINDOWS POWERSHELL
+
+A. Préparer une copie et un environnement neuf
+
+Avec l’archive sur le Bureau, extraire dans un nouveau dossier. Adapter les
+chemins si le Bureau est redirigé. Choisir un nom de destination encore libre.
+
+   $archive = Join-Path $env:USERPROFILE 'Desktop\pythonProject.zip'
+   $destination = Join-Path $env:USERPROFILE 'Desktop\disciplinaire-test'
+   Expand-Archive -LiteralPath $archive -DestinationPath $destination
+   Set-Location -LiteralPath (Join-Path $destination 'pythonProject')
+   Get-Item .\app.py, .\nlp\nlp_service.py, .\video_ai\video_test.py
+
+Avec les sources déjà décompressées, copier app.py, check_gpu.py, test_cases.py
+ainsi que les dossiers nlp et video_ai dans un nouveau dossier, puis ouvrir
+PowerShell dans ce dossier, au niveau de app.py. Ignorer venv310 et les caches.
+
+Préparer Python 3.13 64 bits. Python 3.13.13 64 bits est la version utilisée
+pour les essais de ce guide. Le fichier venv310/pyvenv.cfg
+mentionne Python 3.10.11 pour l’ancien environnement. Consulter les versions
+compatibles si l’installation de PyTorch échoue.
+Source : https://pytorch.org/get-started/locally/
+
+   py -3.13 --version
+   py -3.13 -m venv .venv
+   .\.venv\Scripts\python.exe --version
+   .\.venv\Scripts\python.exe -m pip install --upgrade pip
+
+Si py ne repère pas Python, vérifier que python --version renvoie une version
+compatible, puis utiliser python -m venv .venv à la place. Toutes les commandes
+suivantes appellent directement le Python neuf, sans activation à configurer.
+
+B. Installer les dépendances nécessaires
+
+Aucun requirements.txt, pyproject.toml ni verrou de dépendances n’est fourni.
+Paquets déduits des imports : Flask (flask), Flask-Cors (flask_cors), transformers
+et torch pour l’API. Le module cv2 vient de opencv-python et numpy est importé
+par le détecteur de mouvement. La version 5.1.0.95 d’opencv-python a échoué
+dès le chargement de la cascade, car cv2.CascadeClassifier y était absent.
+La commande vidéo ci-dessous sélectionne une version 4.x.
+
+Versions installées dans l’environnement de vérification : Flask 3.1.3,
+Flask-Cors 6.0.5, Transformers 5.23.0, PyTorch 2.15.0+cpu, OpenCV 4.14.0.94
+et NumPy 2.5.5. Les commandes laissent pip choisir les versions compatibles.
+
+API, test NLP et diagnostic GPU, avec la version CPU de PyTorch :
+
+   .\.venv\Scripts\python.exe -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+   .\.venv\Scripts\python.exe -m pip install Flask Flask-Cors transformers
+
+Démo webcam, installable indépendamment des paquets NLP :
+
+   .\.venv\Scripts\python.exe -m pip install 'opencv-python<5' numpy
+   .\.venv\Scripts\python.exe -m pip check
+
+Pour accélérer BERT sur un GPU NVIDIA compatible, choisir à la place de la
+commande CPU la commande Windows/Pip/CUDA proposée par le sélecteur officiel
+PyTorch, en utilisant .\.venv\Scripts\python.exe -m pip. Un pilote compatible
+et une distribution PyTorch avec CUDA sont nécessaires. Avec une version CPU
+de PyTorch, « CUDA available: False » est attendu.
+Source : https://pytorch.org/get-started/locally/
+
+C. Exécuter les scripts texte et démarrer Flask
+
+   .\.venv\Scripts\python.exe .\check_gpu.py
+   .\.venv\Scripts\python.exe .\test_cases.py
+   .\.venv\Scripts\python.exe -m flask --app app run --host 127.0.0.1 --port 5000
+
+Au premier import de nlp_service.py, prévoir Internet vers Hugging Face et un
+cache local accessible en écriture. Le fichier de poids téléchargé pour les
+essais fait environ 670 Mo. Prévoir aussi de la place pour le tokenizer, la
+configuration et les dépendances. Le téléchargement peut retarder le démarrage.
+Avec un cache déjà rempli, Transformers peut réutiliser les fichiers locaux.
+Si le chargement échoue, le serveur ne démarre pas. Une fois le modèle chargé,
+test_cases.py affiche trois dictionnaires, de niveaux 1, 2 et 3 dans cet ordre
+selon les mots-clés. Les étoiles et le score dépendent de BERT.
+Fichiers du modèle : https://huggingface.co/nlptown/bert-base-multilingual-uncased-sentiment/tree/main
+
+Attendre l’annonce « Running on http://127.0.0.1:5000 ». Le lancement direct
+avec .\.venv\Scripts\python.exe .\app.py est aussi prévu par le code et active
+le mode debug. Arrêter le serveur avec Ctrl+C.
+
+D. Appeler l’API dans une seconde fenêtre PowerShell
+
+   $url = 'http://127.0.0.1:5000/api/analyze-report'
+   $json = @{ report_text = 'La situation a perturbe la seance.' } | ConvertTo-Json -Compress
+   $body = [System.Text.Encoding]::UTF8.GetBytes($json)
+   Invoke-RestMethod -Uri $url -Method Post -ContentType 'application/json; charset=utf-8' -Body $body | ConvertTo-Json -Depth 5
+
+Avant correction, si BERT répond, PowerShell signale HTTP 500. Appliquer
+la modification de la section 2 dans la copie, relancer Flask et répéter la
+commande. Le résultat attendu est HTTP 200 avec le JSON de la section 2.
+Avec un corps JSON {}, le résultat attendu est HTTP 400. Ouvrir une adresse
+dans le navigateur effectue un GET : la racine répond 404 et la route
+/api/analyze-report répond 405, car elle accepte les POST. Il n’y a pas de
+page web à ouvrir dans cette livraison.
+
+E. Lancer la démo vidéo séparément
+
+   .\.venv\Scripts\python.exe .\video_ai\video_test.py
+
+Préparer une session graphique, une webcam accessible à l’indice 0, le fichier
+video_ai/models/haarcascade_frontalface_default.xml et les trois modules
+face_detector.py, face_storage.py et violence_detector.py dans video_ai/.
+Autoriser l’accès à la caméra dans Windows. La démo peut fonctionner à part,
+sans lancer Flask ni télécharger BERT. Aucun fichier vidéo d’exemple n’est
+nécessaire pour la webcam. Avec une vidéo locale autorisée, le script actuel
+demanderait une adaptation de la source cv2.VideoCapture dans une copie.
+
+F. Interface et base de données
+
+Il n’existe aucune commande de lancement pour ces deux composants dans les
+fichiers reçus. Si le groupe précédent fournit l’interface, utiliser les
+scripts du package.json et la configuration d’URL de l’API livrés avec elle.
+Pour une éventuelle base, il faudra identifier le moteur, la configuration de
+connexion et les migrations ou le schéma avant de pouvoir l’initialiser.
+
+Vérifié
+
+- Comparaison des neuf fichiers avec l’archive, lecture des imports et
+  validation de la syntaxe Python et du XML.
+- Téléchargement des fichiers du modèle dans un cache temporaire. Essai de
+  test_cases.py avec le vrai BERT sur CPU : les trois niveaux obtenus étaient
+  1, 2 et 3. Les couples (étoiles, confiance) étaient (3, 0.520), (1, 0.557)
+  et (1, 0.535). check_gpu.py a affiché « CUDA available: False » avec la
+  distribution CPU.
+- Avec OpenCV 4.14.0.94 et NumPy 2.5.5, chargement de la cascade, export d’un
+  JPEG de test et exécution de la boucle vidéo sur deux images générées.
+  Le passage d’une image noire à une image blanche a déclenché l’alerte avec
+  un ratio de 1,0. La capture et la fenêtre étaient simulées.
+- Démarrage de Flask sur 127.0.0.1:5000 et POST avec Invoke-RestMethod sous
+  Windows PowerShell 5.1, avec le vrai modèle et le code original : HTTP 500.
+  Le client de test Flask a confirmé HTTP 400 sans report_text, HTTP 404
+  pour GET /, HTTP 405 pour GET /api/analyze-report et HTTP 200 après
+  chargement en mémoire de la correction. Aucun fichier source n’a été modifié.
+- Vingt essais supplémentaires avec des prédictions simulées ont vérifié
+  les priorités de gravité et le repli sur chacune des cinq notes.
+
+À tester
+
+- Diagnostic CUDA avec une distribution GPU sur une machine compatible,
+  et démo en session graphique avec une webcam et des images autorisées.
+
+Fichiers manquants
+
+- Presentation.pdf, sources et configuration de l’interface, schéma et
+  configuration de la base de données, manifeste de dépendances.
+- Poids et tokenizer BERT à récupérer via Transformers. Le fichier XML Haar
+  de détection de visages est déjà fourni.
